@@ -60,7 +60,8 @@ import os
 import sys
 import pathlib
 import copy
-import subprocess
+import glob
+import tomllib
 
 from argparse import ArgumentParser, RawTextHelpFormatter
 from textwrap import dedent
@@ -332,7 +333,8 @@ class BuildkiteConfig:
     def __init__(self):
         self.bk_config = None
 
-    def _skip_test(self, test_name):
+    @staticmethod
+    def _skip_test(test_name):
         """Return whether `test_name` is excluded via the `TESTS_TO_SKIP` env."""
         return bool(TESTS_TO_SKIP) and test_name in json.loads(TESTS_TO_SKIP)
 
@@ -450,17 +452,31 @@ def crate_test_description(crate_path):
 
 
 def workspace_members():
-    """Return `{crate_name: relative_path}` for each workspace member."""
-    metadata = json.loads(
-        subprocess.check_output(
-            ["cargo", "metadata", "--no-deps", "--format-version", "1"]
+    """Return `{crate_name: relative_path}` for each workspace member.
+
+    Parses the workspace's Cargo.toml manifests with the stdlib `tomllib`
+    module so this script does not require `cargo` on the host.
+    """
+    with open("Cargo.toml", "rb") as f:
+        patterns = tomllib.load(f).get("workspace", {}).get("members", [])
+
+    members = {}
+    for pattern in patterns:
+        # Expand glob patterns like `crates/*`; bare paths pass through.
+        matches = (
+            sorted(glob.glob(pattern))
+            if any(c in pattern for c in "*?[")
+            else [pattern]
         )
-    )
-    root = metadata["workspace_root"]
-    return {
-        pkg["name"]: os.path.relpath(os.path.dirname(pkg["manifest_path"]), root)
-        for pkg in metadata["packages"]
-    }
+        for member_dir in matches:
+            manifest = os.path.join(member_dir, "Cargo.toml")
+            if not os.path.isfile(manifest):
+                continue
+            with open(manifest, "rb") as f:
+                name = tomllib.load(f).get("package", {}).get("name")
+            if name:
+                members[name] = member_dir
+    return members
 
 
 def generate_pipeline(config_file, platform_allowlist):
@@ -529,14 +545,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--workspace-selective",
-        action="store_true",
+        type=lambda v: str(v).lower() == "true",
+        default=False,
+        metavar="BOOL",
         help=(
-            "Generate a selective pipeline for a Cargo workspace, emitting one\n"
-            "step per crate gated by Buildkite's `if_changed` property so each\n"
-            "crate's shared tests only run when files in that crate (or a\n"
-            "workspace-global path) change. The per-crate test description\n"
-            "(using the {crate}/{crate_path} placeholders and `scope`) is\n"
-            "supplied via -t."
+            "When 'true', generate a selective pipeline for a Cargo workspace,\n"
+            "emitting one step per crate gated by Buildkite's `if_changed`\n"
+            "property so each crate's shared tests only run when files in that\n"
+            "crate (or a workspace-global path) change. The per-crate test\n"
+            "description (using the {crate}/{crate_path} placeholders and\n"
+            "`scope`) is supplied via -t. Default: 'false'."
         ),
     )
     args = parser.parse_args()

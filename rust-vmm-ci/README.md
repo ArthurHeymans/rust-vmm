@@ -195,10 +195,10 @@ script that autogenerates the main pipeline can be used with the option
 
 The `rust-vmm/rust-vmm` monorepo hosts several crates in a single Cargo
 workspace and can run CI selectively, so that a change to one crate does not
-retest the whole workspace. Passing `--workspace-selective` enables this:
+retest the whole workspace. Passing `--workspace-selective true` enables this:
 
 ```bash
-./rust-vmm-ci/.buildkite/autogenerate_pipeline.py --workspace-selective -t .buildkite/test_description.json | buildkite-agent pipeline upload
+./rust-vmm-ci/.buildkite/autogenerate_pipeline.py --workspace-selective true -t .buildkite/test_description.json | buildkite-agent pipeline upload
 ```
 
 The mode is designed so that:
