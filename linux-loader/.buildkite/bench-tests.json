@@ -2,7 +2,7 @@
     "tests": [
         {
             "test_name": "bench",
-            "command": "pytest rust-vmm-ci/integration_tests/test_benchmark.py -s",
+            "command": "PACKAGE=linux-loader pytest rust-vmm-ci/integration_tests/test_benchmark.py -s",
             "platform": [
                 "x86_64",
                 "aarch64"
