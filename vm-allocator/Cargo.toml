@@ -2,7 +2,7 @@
 name = "vm-allocator"
 version = "0.1.4"
 description = "Helpers for allocating resources needed during the lifetime of a VM."
-repository = "https://github.com/rust-vmm/vm-allocator"
+repository.workspace = true
 authors = ["rust-vmm AWS maintainers <rust-vmm-maintainers@amazon.com>"]
 readme = "README.md"
 keywords = ["resources", "allocation", "address", "virt"]
