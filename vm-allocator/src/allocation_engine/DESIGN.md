@@ -53,19 +53,19 @@ first address to be reserved.
 At the beginning, the interval tree will contain just one node that will
 represent the whole address space, the state of this node will be free.
 
-![IntervalTree creation example](/images/first_node.png)
+![IntervalTree creation example](../../images/first_node.png)
 
 When we allocate a memory slot, one of the nodes that have the state free
 will be split accordingly. A new node that has as the key a range representing
 the allocated memory slot will be inserted in the tree.
 
-![Node Allocation example](/images/interval_tree_allocation.png)
+![Node Allocation example](../../images/interval_tree_allocation.png)
 
 When one of the allocated nodes is freed its state will be changed from
 `NodeState::Allocated` to `NodeState::Free` if there are two adjacent nodes
 that are not allocated then they will be merged in a single node.
 
-![Node Freeing example](/images/after_free.png)
+![Node Freeing example](../../images/after_free.png)
 
 ## Address aligning
 
