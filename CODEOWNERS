@@ -2,5 +2,6 @@
 /event-manager/ @alexandruag @andreeaflorescu @roypat @ShadowCurse
 /linux-loader/ @aghecenco @sameo @rbradford @roypat @andreitraistaru @ShadowCurse
 /seccompiler/ @alindima @petreeftime
+/vm-allocator/ @AlexandruCihodaru @alsrdn @jiangliu @andreeaflorescu @gsserge @studychao @roypat @ShadowCurse
 /vmm-sys-util/ @andreeaflorescu @ShadowCurse
 /vm-memory/ @bonzini @ShadowCurse @XanClic
