@@ -9,6 +9,7 @@
 - Added revision 3 Generic Timer Description Table generation.
 - Added IO Remapping Table generation for PCI-to-GIC ITS mappings.
 - Added Debug Port Table 2 generation for ARM PL011 UARTs.
+- Added Serial Port Console Redirection Table generation for ARM PL011 UARTs.
 
 ## Fixed
 
