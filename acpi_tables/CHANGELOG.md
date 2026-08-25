@@ -5,6 +5,7 @@
 - Added AML encoders for commonly used control, reference, arithmetic,
   timing, and thermal-zone operations.
 - Added GPIO interrupt, GPIO I/O, I2C, and SPI resource descriptors.
+- Added a fixed-size buffer implementation of `AmlSink`.
 
 ## Fixed
 
