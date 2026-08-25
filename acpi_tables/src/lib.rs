@@ -12,6 +12,7 @@
 pub mod aml;
 pub mod bert;
 pub mod cedt;
+pub mod dbg2;
 pub mod facs;
 pub mod fadt;
 pub mod gas;
