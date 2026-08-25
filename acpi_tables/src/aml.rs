@@ -32,21 +32,29 @@ const NAMECHARBASE: u8 = 0x40;
 
 const EXTOPPREFIX: u8 = 0x5b;
 const MUTEXOP: u8 = 0x01;
+const CONDREFOFOP: u8 = 0x12;
 const CREATEFIELDOP: u8 = 0x13;
+const STALLOP: u8 = 0x21;
+const SLEEPOP: u8 = 0x22;
 const ACQUIREOP: u8 = 0x23;
 const RELEASEOP: u8 = 0x27;
 const OPREGIONOP: u8 = 0x80;
 const FIELDOP: u8 = 0x81;
 const DEVICEOP: u8 = 0x82;
 const POWERRESOURCEOP: u8 = 0x84;
+const THERMALZONEOP: u8 = 0x85;
 
 const LOCAL0OP: u8 = 0x60;
 const ARG0OP: u8 = 0x68;
 const STOREOP: u8 = 0x70;
+const REFOFOP: u8 = 0x71;
 const ADDOP: u8 = 0x72;
 const CONCATOP: u8 = 0x73;
 const SUBTRACTOP: u8 = 0x74;
+const INCREMENTOP: u8 = 0x75;
+const DECREMENTOP: u8 = 0x76;
 const MULTIPLYOP: u8 = 0x77;
+const DIVIDEOP: u8 = 0x78;
 const SHIFTLEFTOP: u8 = 0x79;
 const SHIFTRIGHTOP: u8 = 0x7a;
 const ANDOP: u8 = 0x7b;
@@ -77,6 +85,7 @@ const IFOP: u8 = 0xa0;
 const ELSEOP: u8 = 0xa1;
 const WHILEOP: u8 = 0xa2;
 const RETURNOP: u8 = 0xa4;
+const BREAKOP: u8 = 0xa5;
 const ONESOP: u8 = 0xff;
 
 // AML resouce data fields
@@ -1252,6 +1261,55 @@ impl Aml for Store<'_> {
     }
 }
 
+/// Conditionally create a reference to an object if it exists.
+pub struct CondRefOf<'a> {
+    source: &'a dyn Aml,
+    target: &'a dyn Aml,
+}
+
+impl<'a> CondRefOf<'a> {
+    /// Create a conditional reference from `source` into `target`.
+    pub fn new(source: &'a dyn Aml, target: &'a dyn Aml) -> Self {
+        Self { source, target }
+    }
+}
+
+impl Aml for CondRefOf<'_> {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        sink.byte(EXTOPPREFIX);
+        sink.byte(CONDREFOFOP);
+        self.source.to_aml_bytes(sink);
+        self.target.to_aml_bytes(sink);
+    }
+}
+
+macro_rules! extended_object_op {
+    ($name:ident, $opcode:expr) => {
+        /// Extended operation on an AML object.
+        pub struct $name<'a> {
+            object: &'a dyn Aml,
+        }
+
+        impl<'a> $name<'a> {
+            /// Create the extended object operation.
+            pub fn new(object: &'a dyn Aml) -> Self {
+                Self { object }
+            }
+        }
+
+        impl Aml for $name<'_> {
+            fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+                sink.byte(EXTOPPREFIX);
+                sink.byte($opcode);
+                self.object.to_aml_bytes(sink);
+            }
+        }
+    };
+}
+
+extended_object_op!(Stall, STALLOP);
+extended_object_op!(Sleep, SLEEPOP);
+
 /// Mutex object with a mutex name and a synchronization level.
 pub struct Mutex {
     path: Path,
@@ -1370,6 +1428,15 @@ impl Aml for While<'_> {
     }
 }
 
+/// Terminate the innermost enclosing [`While`] loop.
+pub struct Break;
+
+impl Aml for Break {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        sink.byte(BREAKOP);
+    }
+}
+
 macro_rules! object_op {
     ($name:ident, $opcode:expr) => {
         /// General operation on a object.
@@ -1393,6 +1460,9 @@ macro_rules! object_op {
     };
 }
 
+object_op!(RefOf, REFOFOP);
+object_op!(Increment, INCREMENTOP);
+object_op!(Decrement, DECREMENTOP);
 object_op!(ObjectType, OBJECTTYPEOP);
 object_op!(SizeOf, SIZEOFOP);
 object_op!(Return, RETURNOP);
@@ -1443,6 +1513,41 @@ binary_op!(Index, INDEXOP);
 binary_op!(ToString, TOSTRINGOP);
 binary_op!(CreateDWordField, CREATEDWFIELDOP);
 binary_op!(CreateQWordField, CREATEQWFIELDOP);
+
+/// Divide two AML integers and store both the remainder and quotient.
+pub struct Divide<'a> {
+    dividend: &'a dyn Aml,
+    divisor: &'a dyn Aml,
+    remainder: &'a dyn Aml,
+    quotient: &'a dyn Aml,
+}
+
+impl<'a> Divide<'a> {
+    /// Create a divide operation.
+    pub fn new(
+        dividend: &'a dyn Aml,
+        divisor: &'a dyn Aml,
+        remainder: &'a dyn Aml,
+        quotient: &'a dyn Aml,
+    ) -> Self {
+        Self {
+            dividend,
+            divisor,
+            remainder,
+            quotient,
+        }
+    }
+}
+
+impl Aml for Divide<'_> {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        sink.byte(DIVIDEOP);
+        self.dividend.to_aml_bytes(sink);
+        self.divisor.to_aml_bytes(sink);
+        self.remainder.to_aml_bytes(sink);
+        self.quotient.to_aml_bytes(sink);
+    }
+}
 
 macro_rules! convert_op {
     ($name:ident, $opcode:expr) => {
@@ -1686,6 +1791,35 @@ impl Uuid {
 impl Aml for Uuid {
     fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
         self.name.to_aml_bytes(sink)
+    }
+}
+
+/// Thermal Zone object containing thermal control methods and values.
+pub struct ThermalZone<'a> {
+    name: Path,
+    children: Vec<&'a dyn Aml>,
+}
+
+impl<'a> ThermalZone<'a> {
+    /// Create a Thermal Zone object.
+    pub fn new(name: Path, children: Vec<&'a dyn Aml>) -> Self {
+        Self { name, children }
+    }
+}
+
+impl Aml for ThermalZone<'_> {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        let mut bytes = Vec::new();
+        self.name.to_aml_bytes(&mut bytes);
+        for child in &self.children {
+            child.to_aml_bytes(&mut bytes);
+        }
+
+        let pkg_length = create_pkg_length(bytes.len(), true);
+        sink.byte(EXTOPPREFIX);
+        sink.byte(THERMALZONEOP);
+        sink.vec(&pkg_length);
+        sink.vec(&bytes);
     }
 }
 
@@ -2695,6 +2829,37 @@ mod tests {
             builder.add_element(&5u8);
             builder.to_aml_bytes(&mut aml);
             assert_eq!(expected, aml);
+        }
+    }
+
+    #[test]
+    fn test_additional_aml_operations() {
+        let name = Path::new("OBJ0");
+        let local0 = Local(0);
+        let local1 = Local(1);
+
+        let cases: &[(&dyn Aml, &[u8])] = &[
+            (&Break, b"\xa5"),
+            (&RefOf::new(&name), b"\x71OBJ0"),
+            (&Increment::new(&local0), b"\x75\x60"),
+            (&Decrement::new(&local1), b"\x76\x61"),
+            (&Stall::new(&10u8), b"\x5b\x21\x0a\x0a"),
+            (&Sleep::new(&100u8), b"\x5b\x22\x0a\x64"),
+            (&CondRefOf::new(&name, &local0), b"\x5b\x12OBJ0\x60"),
+            (
+                &Divide::new(&10u8, &3u8, &local0, &local1),
+                b"\x78\x0a\x0a\x0a\x03\x60\x61",
+            ),
+            (
+                &ThermalZone::new(Path::new("TZ00"), vec![]),
+                b"\x5b\x85\x05TZ00",
+            ),
+        ];
+
+        for (aml, expected) in cases {
+            let mut bytes = Vec::new();
+            aml.to_aml_bytes(&mut bytes);
+            assert_eq!(&bytes, expected);
         }
     }
 
