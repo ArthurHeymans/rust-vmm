@@ -19,6 +19,7 @@ pub mod gas;
 pub mod gtdt;
 pub mod hest;
 pub mod hmat;
+pub mod hpet;
 pub mod iort;
 pub mod madt;
 pub mod mcfg;
