@@ -97,6 +97,8 @@ const DWORDADDRSPACEDESC: u8 = 0x87;
 const WORDADDRSPACEDESC: u8 = 0x88;
 const EXTIRQDESC: u8 = 0x89;
 const QWORDADDRSPACEDESC: u8 = 0x8A;
+const GPIOCONNECTIONDESC: u8 = 0x8C;
+const SERIALBUSCONNECTIONDESC: u8 = 0x8E;
 
 /// Zero object in ASL.
 pub const ZERO: Zero = Zero {};
@@ -828,6 +830,223 @@ impl Aml for IrqNoFlags {
     fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
         sink.byte(IRQNOFLAGSDESC); /* IRQNoFlags Descriptor */
         write_irq_mask_bytes(self.number, sink);
+    }
+}
+
+/// GPIO interrupt trigger mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpioIntMode {
+    Level = 0,
+    Edge = 1,
+}
+
+/// GPIO interrupt polarity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpioIntPolarity {
+    ActiveHigh = 0,
+    ActiveLow = 1,
+    ActiveBoth = 2,
+}
+
+/// GPIO pin pull configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpioPinConfig {
+    Default = 0,
+    PullUp = 1,
+    PullDown = 2,
+    PullNone = 3,
+}
+
+/// GPIO I/O restriction mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GpioIoRestriction {
+    None = 0,
+    InputOnly = 1,
+    OutputOnly = 2,
+    Preserve = 3,
+}
+
+/// GPIO Interrupt Connection resource descriptor.
+pub struct GpioInt<'a> {
+    pub resource_source: &'a str,
+    pub pins: &'a [u16],
+    pub consumer: bool,
+    pub mode: GpioIntMode,
+    pub polarity: GpioIntPolarity,
+    pub shared: bool,
+    pub pin_config: GpioPinConfig,
+    pub debounce: u16,
+}
+
+impl Aml for GpioInt<'_> {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        const PIN_TABLE_OFFSET: u16 = 23;
+
+        let pin_table_size = u16::try_from(self.pins.len() * 2).unwrap();
+        let resource_source_size = u16::try_from(self.resource_source.len() + 1).unwrap();
+        let resource_source_offset = PIN_TABLE_OFFSET.checked_add(pin_table_size).unwrap();
+        let vendor_data_offset = resource_source_offset
+            .checked_add(resource_source_size)
+            .unwrap();
+
+        sink.byte(GPIOCONNECTIONDESC);
+        sink.word(vendor_data_offset - 3);
+        sink.byte(1); // Revision ID
+        sink.byte(0); // Interrupt connection
+        sink.word(self.consumer as u16);
+        sink.word(self.mode as u16 | ((self.polarity as u16) << 1) | ((self.shared as u16) << 3));
+        sink.byte(self.pin_config as u8);
+        sink.word(0); // Output drive strength
+        sink.word(self.debounce);
+        sink.word(PIN_TABLE_OFFSET);
+        sink.byte(0); // Resource source index
+        sink.word(resource_source_offset);
+        sink.word(vendor_data_offset);
+        sink.word(0); // Vendor data length
+        for &pin in self.pins {
+            sink.word(pin);
+        }
+        sink.vec(self.resource_source.as_bytes());
+        sink.byte(0);
+    }
+}
+
+/// GPIO I/O Connection resource descriptor.
+pub struct GpioIo<'a> {
+    pub resource_source: &'a str,
+    pub pins: &'a [u16],
+    pub consumer: bool,
+    pub io_restriction: GpioIoRestriction,
+    pub pin_config: GpioPinConfig,
+    pub drive_strength: u16,
+    pub debounce: u16,
+}
+
+impl Aml for GpioIo<'_> {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        const PIN_TABLE_OFFSET: u16 = 23;
+
+        let pin_table_size = u16::try_from(self.pins.len() * 2).unwrap();
+        let resource_source_size = u16::try_from(self.resource_source.len() + 1).unwrap();
+        let resource_source_offset = PIN_TABLE_OFFSET.checked_add(pin_table_size).unwrap();
+        let vendor_data_offset = resource_source_offset
+            .checked_add(resource_source_size)
+            .unwrap();
+
+        sink.byte(GPIOCONNECTIONDESC);
+        sink.word(vendor_data_offset - 3);
+        sink.byte(1); // Revision ID
+        sink.byte(1); // I/O connection
+        sink.word(self.consumer as u16);
+        sink.word(self.io_restriction as u16);
+        sink.byte(self.pin_config as u8);
+        sink.word(self.drive_strength);
+        sink.word(self.debounce);
+        sink.word(PIN_TABLE_OFFSET);
+        sink.byte(0); // Resource source index
+        sink.word(resource_source_offset);
+        sink.word(vendor_data_offset);
+        sink.word(0); // Vendor data length
+        for &pin in self.pins {
+            sink.word(pin);
+        }
+        sink.vec(self.resource_source.as_bytes());
+        sink.byte(0);
+    }
+}
+
+/// I2C Serial Bus Connection resource descriptor.
+pub struct I2cSerialBus<'a> {
+    pub resource_source: &'a str,
+    pub slave_address: u16,
+    pub connection_speed: u32,
+    pub address_10bit: bool,
+    pub consumer: bool,
+}
+
+impl Aml for I2cSerialBus<'_> {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        const TYPE_DATA_LENGTH: u16 = 6;
+
+        let data_length = 9 + TYPE_DATA_LENGTH as usize + self.resource_source.len() + 1;
+        sink.byte(SERIALBUSCONNECTIONDESC);
+        sink.word(u16::try_from(data_length).unwrap());
+        sink.byte(1); // Revision ID
+        sink.byte(0); // Resource source index
+        sink.byte(1); // I2C
+        sink.byte((self.consumer as u8) << 1);
+        sink.word(self.address_10bit as u16);
+        sink.byte(1); // Type-specific revision ID
+        sink.word(TYPE_DATA_LENGTH);
+        sink.dword(self.connection_speed);
+        sink.word(self.slave_address);
+        sink.vec(self.resource_source.as_bytes());
+        sink.byte(0);
+    }
+}
+
+/// SPI clock phase.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpiClockPhase {
+    First = 0,
+    Second = 1,
+}
+
+/// SPI clock polarity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpiClockPolarity {
+    Low = 0,
+    High = 1,
+}
+
+/// SPI wire mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpiWireMode {
+    FourWire = 0,
+    ThreeWire = 1,
+}
+
+/// SPI chip-select polarity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpiDevicePolarity {
+    ActiveLow = 0,
+    ActiveHigh = 1,
+}
+
+/// SPI Serial Bus Connection resource descriptor.
+pub struct SpiSerialBus<'a> {
+    pub resource_source: &'a str,
+    pub connection_speed: u32,
+    pub data_bit_length: u8,
+    pub clock_phase: SpiClockPhase,
+    pub clock_polarity: SpiClockPolarity,
+    pub wire_mode: SpiWireMode,
+    pub device_polarity: SpiDevicePolarity,
+    pub device_selection: u16,
+    pub consumer: bool,
+}
+
+impl Aml for SpiSerialBus<'_> {
+    fn to_aml_bytes(&self, sink: &mut dyn AmlSink) {
+        const TYPE_DATA_LENGTH: u16 = 9;
+
+        let data_length = 9 + TYPE_DATA_LENGTH as usize + self.resource_source.len() + 1;
+        sink.byte(SERIALBUSCONNECTIONDESC);
+        sink.word(u16::try_from(data_length).unwrap());
+        sink.byte(1); // Revision ID
+        sink.byte(0); // Resource source index
+        sink.byte(2); // SPI
+        sink.byte((self.consumer as u8) << 1);
+        sink.word(self.wire_mode as u16 | ((self.device_polarity as u16) << 1));
+        sink.byte(1); // Type-specific revision ID
+        sink.word(TYPE_DATA_LENGTH);
+        sink.dword(self.connection_speed);
+        sink.byte(self.data_bit_length);
+        sink.byte(self.clock_phase as u8);
+        sink.byte(self.clock_polarity as u8);
+        sink.word(self.device_selection);
+        sink.vec(self.resource_source.as_bytes());
+        sink.byte(0);
     }
 }
 
@@ -1962,6 +2181,96 @@ mod tests {
         ];
         let bytes = Scope::raw("_SB_.MBRD".into(), vec![0xAA, 0xBB, 0xCC, 0xDD]);
         assert_eq!(bytes, scope);
+    }
+
+    #[test]
+    fn test_gpio_connection_descriptors() {
+        let gpio_int = GpioInt {
+            resource_source: "\\_SB.GPI0",
+            pins: &[42],
+            consumer: true,
+            mode: GpioIntMode::Edge,
+            polarity: GpioIntPolarity::ActiveLow,
+            shared: false,
+            pin_config: GpioPinConfig::PullUp,
+            debounce: 0,
+        };
+        let gpio_io = GpioIo {
+            resource_source: "\\_SB.GPI0",
+            pins: &[10, 11],
+            consumer: true,
+            io_restriction: GpioIoRestriction::None,
+            pin_config: GpioPinConfig::Default,
+            drive_strength: 0,
+            debounce: 0,
+        };
+
+        let mut bytes = Vec::new();
+        gpio_int.to_aml_bytes(&mut bytes);
+        assert_eq!(
+            bytes,
+            b"\x8c\x20\x00\x01\x00\x01\x00\x03\x00\x01\x00\x00\x00\x00\x17\x00\x00\x19\x00\x23\x00\x00\x00\x2a\x00\\_SB.GPI0\x00"
+        );
+
+        bytes.clear();
+        gpio_io.to_aml_bytes(&mut bytes);
+        assert_eq!(
+            bytes,
+            b"\x8c\x22\x00\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x17\x00\x00\x1b\x00\x25\x00\x00\x00\x0a\x00\x0b\x00\\_SB.GPI0\x00"
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_gpio_connection_descriptor_rejects_offset_overflow() {
+        let resource_source = "a".repeat(u16::MAX as usize - 1);
+        GpioInt {
+            resource_source: &resource_source,
+            pins: &[],
+            consumer: true,
+            mode: GpioIntMode::Level,
+            polarity: GpioIntPolarity::ActiveHigh,
+            shared: false,
+            pin_config: GpioPinConfig::Default,
+            debounce: 0,
+        }
+        .to_aml_bytes(&mut Vec::new());
+    }
+
+    #[test]
+    fn test_serial_bus_connection_descriptors() {
+        let i2c = I2cSerialBus {
+            resource_source: "\\_SB.I2C0",
+            slave_address: 0x50,
+            connection_speed: 400_000,
+            address_10bit: false,
+            consumer: true,
+        };
+        let spi = SpiSerialBus {
+            resource_source: "\\_SB.SPI0",
+            connection_speed: 10_000_000,
+            data_bit_length: 8,
+            clock_phase: SpiClockPhase::First,
+            clock_polarity: SpiClockPolarity::Low,
+            wire_mode: SpiWireMode::FourWire,
+            device_polarity: SpiDevicePolarity::ActiveLow,
+            device_selection: 0,
+            consumer: true,
+        };
+
+        let mut bytes = Vec::new();
+        i2c.to_aml_bytes(&mut bytes);
+        assert_eq!(
+            bytes,
+            b"\x8e\x19\x00\x01\x00\x01\x02\x00\x00\x01\x06\x00\x80\x1a\x06\x00\x50\x00\\_SB.I2C0\x00"
+        );
+
+        bytes.clear();
+        spi.to_aml_bytes(&mut bytes);
+        assert_eq!(
+            bytes,
+            b"\x8e\x1c\x00\x01\x00\x02\x02\x00\x00\x01\x09\x00\x80\x96\x98\x00\x08\x00\x00\x00\x00\\_SB.SPI0\x00"
+        );
     }
 
     #[test]
