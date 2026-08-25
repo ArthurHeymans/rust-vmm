@@ -1729,8 +1729,8 @@ impl Aml for PowerResource<'_> {
         // PkgLength
         let pkg_length = create_pkg_length(bytes.len(), true);
 
-        sink.byte(POWERRESOURCEOP);
         sink.byte(EXTOPPREFIX);
+        sink.byte(POWERRESOURCEOP);
         sink.vec(&pkg_length);
         sink.vec(&bytes);
     }
@@ -2696,6 +2696,16 @@ mod tests {
             builder.to_aml_bytes(&mut aml);
             assert_eq!(expected, aml);
         }
+    }
+
+    #[test]
+    fn test_power_resource() {
+        let power_resource = PowerResource::new(Path::new("PWR0"), 0, 0, vec![]);
+        let mut aml = Vec::new();
+
+        power_resource.to_aml_bytes(&mut aml);
+
+        assert_eq!(aml, b"\x5b\x84\x08PWR0\x00\x00\x00");
     }
 
     #[test]
