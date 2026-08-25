@@ -7,6 +7,7 @@
 - Added GPIO interrupt, GPIO I/O, I2C, and SPI resource descriptors.
 - Added a fixed-size buffer implementation of `AmlSink`.
 - Added revision 3 Generic Timer Description Table generation.
+- Added IO Remapping Table generation for PCI-to-GIC ITS mappings.
 
 ## Fixed
 
